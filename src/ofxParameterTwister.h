@@ -32,6 +32,13 @@ class ofxParameterTwister
 	std::unique_ptr<ofxParameterTwisterImpl> impl;
 
 public:
+	enum class Animation
+	{
+		NONE,
+		STROBE,
+		PULSE,
+		RAINBOW
+	};
 	
 	ofxParameterTwister();
 	~ofxParameterTwister();
@@ -47,6 +54,13 @@ public:
 	void setParam(size_t idx_, ofParameter<float>& param_);
 	void setParam(size_t idx_, ofParameter<bool>& param_);
 	void clearParam(size_t idx_, bool force_ = false);
+
+	void setHueRGB(size_t idx_, float hue_);
+	void setBrightnessRGB(size_t idx_, float bri_);
+	void setAnimationRGB(size_t idx_, Animation anim_, uint8_t rate_ = 0);
+
+	void setBrightnessRotary(size_t idx_, float bri_);
+	void setAnimationRotary(size_t idx_, Animation anim_, uint8_t rate_ = 0);
 
 };
 

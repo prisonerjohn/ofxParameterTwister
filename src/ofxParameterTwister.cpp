@@ -103,9 +103,11 @@ struct Encoder {
 
 	void setEncoderPhenotype(uint8_t phenotype);
 
-	void setEncoderAnimation(uint8_t v_);
-	void setBrightnessRotary(float b_); /// brightness is normalised over 31 steps 0..30
+	void setHueRGB(float h_);
 	void setBrightnessRGB(float b_);
+	void setBrightnessRotary(float b_); /// brightness is normalised over 31 steps 0..30
+
+	void setAnimation(uint8_t v_);
 };
 
 // Implementation for paramter twister - any calls to twister will be forwared to 
@@ -137,6 +139,20 @@ public:
 	void setParam(Encoder& encoder_, ofParameter<float>& param_);
 	void setParam(Encoder& encoder_, ofParameter<bool>& param_);
 	void clearParam(Encoder& encoder_, bool force_);
+
+	void setHueRGB(size_t idx_, float hue_);
+	void setBrightnessRGB(size_t idx_, float bri_);
+	void setAnimationRGB(size_t idx_, ofxParameterTwister::Animation anim_, uint8_t rate_ = 0);
+
+	void setBrightnessRotary(size_t idx_, float bri_);
+	void setAnimationRotary(size_t idx_, ofxParameterTwister::Animation anim_, uint8_t rate_ = 0);
+
+	void setHueRGB(Encoder& encoder_, float hue_);
+	void setBrightnessRGB(Encoder& encoder_, float bri_);
+	void setAnimationRGB(Encoder& encoder_, ofxParameterTwister::Animation anim_, uint8_t rate_);
+
+	void setBrightnessRotary(Encoder& encoder_, float bri_);
+	void setAnimationRotary(Encoder& encoder_, ofxParameterTwister::Animation anim_, uint8_t rate_);
 
 	void update();
 	~ofxParameterTwisterImpl();
@@ -222,6 +238,76 @@ void ofxParameterTwister::clearParam(size_t idx_, bool force_) {
 		setup();
 		// call this method again.
 		clearParam(idx_, force_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwister::setHueRGB(size_t idx_, float hue_) {
+	if (impl) {
+		impl->setHueRGB(idx_, hue_);
+	}
+	else {
+		ofLogWarning() << "ofxParameterTwister::" << __func__ << "() : setup() must be called before calling " << __func__ << " for the first time. Calling setup implicitly...";
+		setup();
+		// call this method again.
+		setHueRGB(idx_, hue_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwister::setBrightnessRGB(size_t idx_, float bri_) {
+	if (impl) {
+		impl->setBrightnessRGB(idx_, bri_);
+	}
+	else {
+		ofLogWarning() << "ofxParameterTwister::" << __func__ << "() : setup() must be called before calling " << __func__ << " for the first time. Calling setup implicitly...";
+		setup();
+		// call this method again.
+		setBrightnessRGB(idx_, bri_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwister::setAnimationRGB(size_t idx_, Animation anim_, uint8_t rate_) {
+	if (impl) {
+		impl->setAnimationRGB(idx_, anim_, rate_);
+	}
+	else {
+		ofLogWarning() << "ofxParameterTwister::" << __func__ << "() : setup() must be called before calling " << __func__ << " for the first time. Calling setup implicitly...";
+		setup();
+		// call this method again.
+		setAnimationRGB(idx_, anim_, rate_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwister::setBrightnessRotary(size_t idx_, float bri_) {
+	if (impl) {
+		impl->setBrightnessRotary(idx_, bri_);
+	}
+	else {
+		ofLogWarning() << "ofxParameterTwister::" << __func__ << "() : setup() must be called before calling " << __func__ << " for the first time. Calling setup implicitly...";
+		setup();
+		// call this method again.
+		setBrightnessRotary(idx_, bri_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwister::setAnimationRotary(size_t idx_, Animation anim_, uint8_t rate_) {
+	if (impl) {
+		impl->setAnimationRotary(idx_, anim_, rate_);
+	}
+	else {
+		ofLogWarning() << "ofxParameterTwister::" << __func__ << "() : setup() must be called before calling " << __func__ << " for the first time. Calling setup implicitly...";
+		setup();
+		// call this method again.
+		setAnimationRotary(idx_, anim_, rate_);
 	}
 }
 
@@ -358,6 +444,27 @@ void Encoder::setEncoderPhenotype(uint8_t phenotype)
 
 // ------------------------------------------------------
 
+void Encoder::setHueRGB(float h_)
+{
+	if (mMidiOut == nullptr)
+		return;
+
+	// ----------| invariant: midiOut is not nullptr
+
+	unsigned char val = std::roundf(ofMap(h_, 0.f, 1.f, 1, 126, true));
+
+	vector<unsigned char> msg{
+		0xB1,					// `B` means "Control Change" message, lower nibble means channel id; COLOR_CONTROL messages are set via channel 1
+		pos,					// device id
+		val,
+	};
+
+	mMidiOut->sendMessage(&msg);
+
+}
+
+// ------------------------------------------------------
+
 void Encoder::setBrightnessRotary(float b_)
 {
 	if (mMidiOut == nullptr)
@@ -399,7 +506,7 @@ void Encoder::setBrightnessRGB(float b_)
 }
 // ------------------------------------------------------
 
-void Encoder::setEncoderAnimation(uint8_t v_)
+void Encoder::setAnimation(uint8_t v_)
 {
 	if (mMidiOut == nullptr)
 		return;
@@ -553,14 +660,6 @@ void ofxParameterTwisterImpl::setParam(size_t idx_, ofParameter<float>& param_) 
 
 // ------------------------------------------------------
 
-void ofxParameterTwisterImpl::setParam(size_t idx_, ofParameter<bool>& param_) {
-	if (idx_ < mEncoders.size()) {
-		setParam(mEncoders[idx_], param_);
-	}
-}
-
-// ------------------------------------------------------
-
 void ofxParameterTwisterImpl::setParam(Encoder& encoder_, ofParameter<float>& param_) {
 	encoder_.setState(Encoder::State::ROTARY);
 	encoder_.setValue(ofMap(param_, param_.getMin(), param_.getMax(), 0, TW_MAX_ENCODER_VALUE, true));
@@ -580,7 +679,15 @@ void ofxParameterTwisterImpl::setParam(Encoder& encoder_, ofParameter<float>& pa
 		// on parameter change, write from parameter 
 		// to midi.
 		encoder_.setValue(ofMap(v_, pMin, pMax, 0, TW_MAX_ENCODER_VALUE, true));
-	});
+		});
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setParam(size_t idx_, ofParameter<bool>& param_) {
+	if (idx_ < mEncoders.size()) {
+		setParam(mEncoders[idx_], param_);
+	}
 }
 
 // ------------------------------------------------------
@@ -611,6 +718,121 @@ void ofxParameterTwisterImpl::clearParam(size_t idx_, bool force_) {
 void ofxParameterTwisterImpl::clearParam(Encoder& encoder_, bool force_) {
 	encoder_.setState(Encoder::State::DISABLED, force_);
 	encoder_.mELParamChange.unsubscribe(); // reset listener
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setHueRGB(size_t idx_, float hue_)
+{
+	if (idx_ < mEncoders.size())
+	{
+		setHueRGB(mEncoders[idx_], hue_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setHueRGB(Encoder& encoder_, float hue_)
+{
+	encoder_.setHueRGB(hue_);
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setBrightnessRGB(size_t idx_, float bri_)
+{
+	if (idx_ < mEncoders.size())
+	{
+		setBrightnessRGB(mEncoders[idx_], bri_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setBrightnessRGB(Encoder& encoder_, float bri_)
+{
+	encoder_.setBrightnessRGB(bri_);
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setAnimationRGB(size_t idx_, ofxParameterTwister::Animation anim_, uint8_t rate_)
+{
+	if (idx_ < mEncoders.size() && rate_ < 8)
+	{
+		setAnimationRGB(mEncoders[idx_], anim_, rate_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setAnimationRGB(Encoder& encoder_, ofxParameterTwister::Animation anim_, uint8_t rate_)
+{
+	uint8_t mode;
+	switch (anim_)
+	{
+	case ofxParameterTwister::Animation::NONE:
+		mode = 0;
+		break;
+	case ofxParameterTwister::Animation::STROBE:
+		mode = 1 + rate_;
+		break;
+	case ofxParameterTwister::Animation::PULSE:
+		mode = 9 + rate_;
+		break;
+	case ofxParameterTwister::Animation::RAINBOW:
+	default:
+		mode = 127;
+	}
+	encoder_.setAnimation(mode);
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setBrightnessRotary(size_t idx_, float bri_)
+{
+	if (idx_ < mEncoders.size())
+	{
+		setBrightnessRotary(mEncoders[idx_], bri_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setBrightnessRotary(Encoder& encoder_, float bri_)
+{
+	encoder_.setBrightnessRotary(bri_);
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setAnimationRotary(size_t idx_, ofxParameterTwister::Animation anim_, uint8_t rate_)
+{
+	if (idx_ < mEncoders.size() && rate_ < 8 && anim_ != ofxParameterTwister::Animation::RAINBOW)
+	{
+		setAnimationRotary(mEncoders[idx_], anim_, rate_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setAnimationRotary(Encoder& encoder_, ofxParameterTwister::Animation anim_, uint8_t rate_)
+{
+	uint8_t mode;
+	switch (anim_)
+	{
+	case ofxParameterTwister::Animation::NONE:
+		mode = 48;
+		break;
+	case ofxParameterTwister::Animation::STROBE:
+		mode = 49 + rate_;
+		break;
+	case ofxParameterTwister::Animation::PULSE:
+	default:
+		mode = 57 + rate_;
+		break;
+	}
+	encoder_.setAnimation(mode);
 }
 
 // ------------------------------------------------------
