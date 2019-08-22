@@ -1,5 +1,6 @@
 #pragma once
 
+template<typename ParameterType> class ofParameter; //ffdecl.
 class ofParameterGroup; //ffdecl.
 class ofxParameterTwisterImpl; // ffdecl.
 
@@ -36,10 +37,16 @@ public:
 	~ofxParameterTwister();
 
 	void setup();
+	void clear();
 
 	/// Call this method once per frame to read back Midi values from Twister
 	void update(); 
+
 	void setParams(const ofParameterGroup& group_);
+
+	void setParam(size_t idx_, ofParameter<float>& param_);
+	void setParam(size_t idx_, ofParameter<bool>& param_);
+	void clearParam(size_t idx_, bool force_ = false);
 
 };
 

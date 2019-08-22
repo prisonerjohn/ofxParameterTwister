@@ -126,7 +126,18 @@ class ofxParameterTwisterImpl {
 
 public:
 	void setup();
+	void clear();
+
 	void setParams(const ofParameterGroup& group_);
+
+	void setParam(size_t idx_, ofParameter<float>& param_);
+	void setParam(size_t idx_, ofParameter<bool>& param_);
+	void clearParam(size_t idx_, bool force_ = false);
+
+	void setParam(Encoder& encoder_, ofParameter<float>& param_);
+	void setParam(Encoder& encoder_, ofParameter<bool>& param_);
+	void clearParam(Encoder& encoder_, bool force_);
+
 	void update();
 	~ofxParameterTwisterImpl();
 };
@@ -150,6 +161,14 @@ void ofxParameterTwister::setup() {
 
 // ------------------------------------------------------
 
+void ofxParameterTwister::clear() {
+	if (impl) {
+		impl->clear();
+	}
+}
+
+// ------------------------------------------------------
+
 void ofxParameterTwister::setParams(const ofParameterGroup& group_) {
 	
 	if (impl) {
@@ -162,6 +181,48 @@ void ofxParameterTwister::setParams(const ofParameterGroup& group_) {
 		setParams(group_);
 	}
 	
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwister::setParam(size_t idx_, ofParameter<float>& param_) {
+	if (impl) {
+		impl->setParam(idx_, param_);
+	}
+	else {
+		ofLogWarning() << "ofxParameterTwister::" << __func__ << "() : setup() must be called before calling " << __func__ << " for the first time. Calling setup implicitly...";
+		setup();
+		// call this method again.
+		setParam(idx_, param_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwister::setParam(size_t idx_, ofParameter<bool>& param_) {
+	if (impl) {
+		impl->setParam(idx_, param_);
+	}
+	else {
+		ofLogWarning() << "ofxParameterTwister::" << __func__ << "() : setup() must be called before calling " << __func__ << " for the first time. Calling setup implicitly...";
+		setup();
+		// call this method again.
+		setParam(idx_, param_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwister::clearParam(size_t idx_, bool force_) {
+	if (impl) {
+		impl->clearParam(idx_, force_);
+	}
+	else {
+		ofLogWarning() << "ofxParameterTwister::" << __func__ << "() : setup() must be called before calling " << __func__ << " for the first time. Calling setup implicitly...";
+		setup();
+		// call this method again.
+		clearParam(idx_, force_);
+	}
 }
 
 // ------------------------------------------------------
@@ -434,6 +495,14 @@ void ofxParameterTwisterImpl::setup() {
 
 // ------------------------------------------------------
 
+void ofxParameterTwisterImpl::clear() {
+	for (auto & e : mEncoders) {
+		clearParam(e, true);
+	}
+}
+
+// ------------------------------------------------------
+
 void ofxParameterTwisterImpl::setParams(const ofParameterGroup & group_) {
 	ofLogVerbose() << "Updating mapping" << endl;
 	/*
@@ -451,45 +520,17 @@ void ofxParameterTwisterImpl::setParams(const ofParameterGroup & group_) {
 		if (it != endIt) {
 			if (auto param = dynamic_pointer_cast<ofParameter<float>>(*it)) {
 				// bingo, we have a float param
-				e.setState(Encoder::State::ROTARY);
-				e.setValue(ofMap(*param, param->getMin(), param->getMax(), 0, TW_MAX_ENCODER_VALUE, true));
-
-				// now set the Encoder's event listener to track 
-				// this parameter
-				auto pMin = param->getMin();
-				auto pMax = param->getMax();
-
-				e.updateParameter = [=](uint8_t msb, uint8_t lsb) {
-					uint16_t highRezVal = ((msb & 0x7F) << 7) | (lsb & 0x7F); 
-					// on midi input
-					param->set(ofMap(highRezVal, 0, TW_MAX_ENCODER_VALUE, pMin, pMax, true));
-				};
-
-				e.mELParamChange = param->newListener([&e, pMin, pMax](float v_) {
-					// on parameter change, write from parameter 
-					// to midi.
-					e.setValue(ofMap(v_, pMin, pMax, 0, TW_MAX_ENCODER_VALUE, true));
-				});
+				setParam(e, *param);
 
 			}
 			else if (auto param = dynamic_pointer_cast<ofParameter<bool>>(*it)) {
 				// we have a bool parameter
-				e.setState(Encoder::State::SWITCH);
-				e.setValue((*param == true) ? TW_MAX_ENCODER_VALUE : 0);
-
-				e.updateParameter = [=](uint8_t msb, uint8_t lsb) {
-					param->set((msb > 63) ? true : false);
-				};
-
-				e.mELParamChange = param->newListener([&e](bool v_) {
-					e.setValue(v_ == true ? TW_MAX_ENCODER_VALUE : 0);
-				});
+				setParam(e, *param);
 
 			}
 			else {
 				// we cannot match this parameter, unfortunately
-				e.setState(Encoder::State::DISABLED);
-				e.mELParamChange.unsubscribe(); // reset listener
+				clearParam(e, false);
 			}
 
 			it++;
@@ -500,6 +541,76 @@ void ofxParameterTwisterImpl::setParams(const ofParameterGroup & group_) {
 			e.setState(Encoder::State::DISABLED, true);
 		}
 	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setParam(size_t idx_, ofParameter<float>& param_) {
+	if (idx_ < mEncoders.size()) {
+		setParam(mEncoders[idx_], param_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setParam(size_t idx_, ofParameter<bool>& param_) {
+	if (idx_ < mEncoders.size()) {
+		setParam(mEncoders[idx_], param_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setParam(Encoder& encoder_, ofParameter<float>& param_) {
+	encoder_.setState(Encoder::State::ROTARY);
+	encoder_.setValue(ofMap(param_, param_.getMin(), param_.getMax(), 0, TW_MAX_ENCODER_VALUE, true));
+
+	// now set the Encoder's event listener to track 
+	// this parameter
+	auto pMin = param_.getMin();
+	auto pMax = param_.getMax();
+
+	encoder_.updateParameter = [&param_, pMin, pMax](uint8_t msb, uint8_t lsb) {
+		uint16_t highRezVal = ((msb & 0x7F) << 7) | (lsb & 0x7F);
+		// on midi input
+		param_.set(ofMap(highRezVal, 0, TW_MAX_ENCODER_VALUE, pMin, pMax, true));
+	};
+
+	encoder_.mELParamChange = param_.newListener([&encoder_, pMin, pMax](float v_) {
+		// on parameter change, write from parameter 
+		// to midi.
+		encoder_.setValue(ofMap(v_, pMin, pMax, 0, TW_MAX_ENCODER_VALUE, true));
+	});
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setParam(Encoder& encoder_, ofParameter<bool>& param_) {
+	encoder_.setState(Encoder::State::SWITCH);
+	encoder_.setValue((param_ == true) ? TW_MAX_ENCODER_VALUE : 0);
+
+	encoder_.updateParameter = [&param_](uint8_t msb, uint8_t lsb) {
+		param_.set((msb > 63) ? true : false);
+	};
+
+	encoder_.mELParamChange = param_.newListener([&encoder_](bool v_) {
+		encoder_.setValue(v_ == true ? TW_MAX_ENCODER_VALUE : 0);
+	});
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::clearParam(size_t idx_, bool force_) {
+	if (idx_ < mEncoders.size()) {
+		clearParam(mEncoders[idx_], force_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::clearParam(Encoder& encoder_, bool force_) {
+	encoder_.setState(Encoder::State::DISABLED, force_);
+	encoder_.mELParamChange.unsubscribe(); // reset listener
 }
 
 // ------------------------------------------------------
