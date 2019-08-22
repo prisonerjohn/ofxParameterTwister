@@ -13,6 +13,17 @@ void ofApp::setup() {
 	mPanel1.setup();
 	mPanel1.add(paramsColor);
 
+	// add event listener for pulse parameter
+	mParamListeners.push(mParamPulseEncoders.newListener([this](bool & val) {
+		for (int i = 0; i < 16; ++i) {
+			if (val) {
+				mTwister.setAnimationRotary(i, ofxParameterTwister::Animation::PULSE, i % 4);
+			}
+			else {
+				mTwister.setAnimationRotary(i, ofxParameterTwister::Animation::NONE);
+			}
+		}
+	}));
 
 	mCam1.setupPerspective(false, 60, 0.1, 5000);
 	mCam1.setPosition(ofVec3f(0, 0, 300));
@@ -35,6 +46,15 @@ void ofApp::update() {
 	// depending at which point during execution you want midi parameters to 
 	// affect your design
 
+	if (mParamDemoMode) {
+		float time = ofGetElapsedTimef();
+		for (int j = 0; j < 4; ++j) {
+			for (int i = 0; i < 4; ++i) {
+				float val = fmod(time * .5f + (i + j) / 9.f, 1.f);
+				mTwister.setHueRGB(j * 4 + i, val);
+			}
+		}
+	}
 }
 
 //--------------------------------------------------------------
@@ -88,7 +108,7 @@ void ofApp::draw() {
 			"    /    /   /  /     ofxParameterTwister Example\n"
 			"   /  __/ * /  /__    (c) ponies & light ltd., 2016. All rights reserved.\n"
 			"  /__/     /_____/    poniesandlight.co.uk\n\n"
-			"<i> toggle info text | <a|b> toggle parameter group", 10, ofGetHeight() - 12 * 7);
+			"<i> toggle info text | <a|b> toggle parameter group | <c> clear all", 10, ofGetHeight() - 12 * 7);
 
 	}
 	mPanel1.draw();
@@ -103,12 +123,18 @@ void ofApp::keyPressed(int key) {
 		mPanel1.clear();
 		mPanel1.add(paramsColor);
 		mTwister.setParams(paramsColor);
+		mParamDemoMode = false;
 		break;
 	case 'b':
 		mPanel1.clear();
 		mPanel1.add(paramsShape);
 		mTwister.setParams(paramsShape);
+		mParamDemoMode = false;
 		break;
+	case 'c':
+		mPanel1.clear();
+		mTwister.clear();
+		mParamDemoMode = true;
 	case 'i':
 		mParamShouldDrawInfo ^= true;
 		break;
