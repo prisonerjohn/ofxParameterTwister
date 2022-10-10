@@ -79,24 +79,24 @@ struct Encoder {
 	// Position on the controller left to right, top to bottom (row-major)
 	uint8_t pos = 0;
 
-	// knob may be either 
-	// disabled, or a rotary controller, or a switch.
-	enum class State {
-		ROTARY,
-		SWITCH,
-		DISABLED,
-	} mState = State::DISABLED;
+	bool rotaryEnabled = false;
+	bool switchEnabled = false;
 
 	// Internal hardware representation of the knob value 
 	// may be (0..3FFF) == (0..2^14-1) == (0..16383)
 
 	// event listener for parameter change
-	ofEventListener mELParamChange;
+	ofEventListener mELSwitchParamChange;
+	ofEventListener mELRotaryParamChange;
 
-	std::function<void(uint8_t v_ , uint8_t hr_)> updateParameter;
+	std::function<void(uint8_t v_, uint8_t hr_)> updateSwitchParam;
+	std::function<void(uint8_t v_, uint8_t hr_)> updateRotaryParam;
 
-	void setState(State s_, bool force_ = false);
-	void setValue(uint16_t value); 
+	void setRotaryState(bool enabled_, bool force_ = false);
+	void setRotaryValue(uint16_t value);
+
+	void setSwitchState(bool enabled_, bool force_ = false);
+	void setSwitchValue(uint16_t value);
 
 	void sendToSwitch(uint8_t v_);
 	void sendToRotary(uint8_t msb, uint8_t lsb); // most significant byte, least significant byte
@@ -329,53 +329,66 @@ void ofxParameterTwister::update() {
 
 // ------------------------------------------------------
 
-void Encoder::setState(State s_, bool force_) {
-	if (s_ == mState && force_ == false) {
+void Encoder::setRotaryState(bool enabled_, bool force_) {
+	if (rotaryEnabled == enabled_ && force_ == false) {
 		return;
 	}
 
 	// ----------| invariant: state change requested, or forced
 
-	switch (s_)
-	{
-	case Encoder::State::DISABLED:
-		setEncoderPhenotype(2);
-		break;
-	case Encoder::State::ROTARY:
+	if (enabled_) {
 		setEncoderPhenotype(0);
-		break;
-	case Encoder::State::SWITCH:
-		setEncoderPhenotype(1);
-		break;
-	default:
-		break;
+	}
+	else if (!switchEnabled) {
+		setEncoderPhenotype(2);
 	}
 
-	mState = s_;
+	rotaryEnabled = enabled_;
 }
 
 // ------------------------------------------------------
 
-void Encoder::setValue(uint16_t v_) {
+void Encoder::setRotaryValue(uint16_t v_) {
+	if (!rotaryEnabled) {
+		ofLogError() << "Cannot send value to disabled encoder" << pos;
+		return;
+	}
 
 	uint8_t msb = ((v_ >> 7) & 0x7F); // most significant byte
 	uint8_t lsb = (v_ & 0x7F);		  // least significant byte
+	sendToRotary(msb, lsb);
+}
 
-	switch (mState)
-	{
-	case Encoder::State::DISABLED:
-		ofLogError() << "Cannot send value to disabled encoder" << pos;
-		break;
-	case Encoder::State::ROTARY:
-		sendToRotary(msb, lsb);
-		break;
-	case Encoder::State::SWITCH:
-		sendToSwitch(msb);
-		break;
-	default:
-		break;
+// ------------------------------------------------------
+
+void Encoder::setSwitchState(bool enabled_, bool force_) {
+	if (switchEnabled == enabled_ && force_ == false) {
+		return;
 	}
 
+	// ----------| invariant: state change requested, or forced
+
+	if (enabled_) {
+		setEncoderPhenotype(1);
+	}
+	else if (!rotaryEnabled) {
+		setEncoderPhenotype(2);
+	}
+
+	switchEnabled = enabled_;
+}
+
+// ------------------------------------------------------
+
+void Encoder::setSwitchValue(uint16_t v_) {
+	if (!switchEnabled) {
+		ofLogError() << "Cannot send value to disabled encoder" << pos;
+		return;
+	}
+
+	uint8_t msb = ((v_ >> 7) & 0x7F); // most significant byte
+	uint8_t lsb = (v_ & 0x7F);		  // least significant byte
+	sendToSwitch(msb);
 }
 
 // ------------------------------------------------------
@@ -645,7 +658,8 @@ void ofxParameterTwisterImpl::setParams(const ofParameterGroup & group_) {
 		}
 		else {
 			// no more parameters to map.
-			e.setState(Encoder::State::DISABLED, true);
+			e.setRotaryState(false, true);
+			e.setSwitchState(false, true);
 		}
 	}
 }
@@ -661,25 +675,25 @@ void ofxParameterTwisterImpl::setParam(size_t idx_, ofParameter<float>& param_) 
 // ------------------------------------------------------
 
 void ofxParameterTwisterImpl::setParam(Encoder& encoder_, ofParameter<float>& param_) {
-	encoder_.setState(Encoder::State::ROTARY);
-	encoder_.setValue(ofMap(param_, param_.getMin(), param_.getMax(), 0, TW_MAX_ENCODER_VALUE, true));
+	encoder_.setRotaryState(true);
+	encoder_.setRotaryValue(ofMap(param_, param_.getMin(), param_.getMax(), 0, TW_MAX_ENCODER_VALUE, true));
 
 	// now set the Encoder's event listener to track 
 	// this parameter
 	auto pMin = param_.getMin();
 	auto pMax = param_.getMax();
 
-	encoder_.updateParameter = [&param_, pMin, pMax](uint8_t msb, uint8_t lsb) {
+	encoder_.updateRotaryParam = [&param_, pMin, pMax](uint8_t msb, uint8_t lsb) {
 		uint16_t highRezVal = ((msb & 0x7F) << 7) | (lsb & 0x7F);
 		// on midi input
 		param_.set(ofMap(highRezVal, 0, TW_MAX_ENCODER_VALUE, pMin, pMax, true));
 	};
 
-	encoder_.mELParamChange = param_.newListener([&encoder_, pMin, pMax](float v_) {
+	encoder_.mELRotaryParamChange = param_.newListener([&encoder_, pMin, pMax](float v_) {
 		// on parameter change, write from parameter 
 		// to midi.
-		encoder_.setValue(ofMap(v_, pMin, pMax, 0, TW_MAX_ENCODER_VALUE, true));
-		});
+		encoder_.setRotaryValue(ofMap(v_, pMin, pMax, 0, TW_MAX_ENCODER_VALUE, true));
+	});
 }
 
 // ------------------------------------------------------
@@ -693,16 +707,16 @@ void ofxParameterTwisterImpl::setParam(size_t idx_, ofParameter<bool>& param_) {
 // ------------------------------------------------------
 
 void ofxParameterTwisterImpl::setParam(Encoder& encoder_, ofParameter<bool>& param_) {
-	encoder_.setState(Encoder::State::SWITCH);
-	encoder_.setValue((param_ == true) ? TW_MAX_ENCODER_VALUE : 0);
+	encoder_.setSwitchState(true);
+	encoder_.setSwitchValue((param_ == true) ? TW_MAX_ENCODER_VALUE : 0);
 
-	encoder_.updateParameter = [&param_](uint8_t msb, uint8_t lsb) {
+	encoder_.updateSwitchParam = [&param_](uint8_t msb, uint8_t lsb) {
 		param_.set((msb > 63) ? true : false);
 	};
 
-	encoder_.mELParamChange = param_.newListener([&encoder_](bool v_) {
-		encoder_.setValue(v_ == true ? TW_MAX_ENCODER_VALUE : 0);
-	});
+	encoder_.mELSwitchParamChange = param_.newListener([&encoder_](bool v_) {
+		encoder_.setSwitchValue(v_ == true ? TW_MAX_ENCODER_VALUE : 0);
+		});
 }
 
 // ------------------------------------------------------
@@ -716,8 +730,11 @@ void ofxParameterTwisterImpl::clearParam(size_t idx_, bool force_) {
 // ------------------------------------------------------
 
 void ofxParameterTwisterImpl::clearParam(Encoder& encoder_, bool force_) {
-	encoder_.setState(Encoder::State::DISABLED, force_);
-	encoder_.mELParamChange.unsubscribe(); // reset listener
+	encoder_.setRotaryState(false, force_);
+	encoder_.mELRotaryParamChange.unsubscribe(); // reset listener
+
+	encoder_.setSwitchState(false, force_);
+	encoder_.mELSwitchParamChange.unsubscribe(); // reset listener
 }
 
 // ------------------------------------------------------
@@ -858,12 +875,11 @@ void ofxParameterTwisterImpl::update() {
 				} else if (encoderID < mEncoders.size()){
 
 					auto &e = mEncoders[encoderID];
+					if (e.rotaryEnabled) {
 
-					if (e.mState == Encoder::State::ROTARY) {
-						
 						// write value back to parameter
-						if (e.updateParameter) {
-							e.updateParameter(m.value, mHighResVelLowByte);
+						if (e.updateRotaryParam) {
+							e.updateRotaryParam(m.value, mHighResVelLowByte);
 						}
 						
 					}
@@ -876,9 +892,9 @@ void ofxParameterTwisterImpl::update() {
 				// rotary message
 				size_t encoderID = m.controller;
 				auto &e = mEncoders[encoderID];
-				if (e.mState == Encoder::State::SWITCH)
-					if (e.updateParameter)
-						e.updateParameter(m.value,0);
+				if (e.switchEnabled)
+					if (e.updateSwitchParam)
+						e.updateSwitchParam(m.value,0);
 			}
 		}
 	}
