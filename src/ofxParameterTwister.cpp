@@ -133,10 +133,12 @@ public:
 	void setParams(const ofParameterGroup& group_);
 
 	void setParam(size_t idx_, ofParameter<float>& param_);
+	void setParam(size_t idx_, ofParameter<int>& param_);
 	void setParam(size_t idx_, ofParameter<bool>& param_);
 	void clearParam(size_t idx_, bool force_ = false);
 
 	void setParam(Encoder& encoder_, ofParameter<float>& param_);
+	void setParam(Encoder& encoder_, ofParameter<int>& param_);
 	void setParam(Encoder& encoder_, ofParameter<bool>& param_);
 	void clearParam(Encoder& encoder_, bool force_);
 
@@ -202,6 +204,20 @@ void ofxParameterTwister::setParams(const ofParameterGroup& group_) {
 // ------------------------------------------------------
 
 void ofxParameterTwister::setParam(size_t idx_, ofParameter<float>& param_) {
+	if (impl) {
+		impl->setParam(idx_, param_);
+	}
+	else {
+		ofLogWarning() << "ofxParameterTwister::" << __func__ << "() : setup() must be called before calling " << __func__ << " for the first time. Calling setup implicitly...";
+		setup();
+		// call this method again.
+		setParam(idx_, param_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwister::setParam(size_t idx_, ofParameter<int>& param_) {
 	if (impl) {
 		impl->setParam(idx_, param_);
 	}
@@ -643,6 +659,11 @@ void ofxParameterTwisterImpl::setParams(const ofParameterGroup & group_) {
 				setParam(e, *param);
 
 			}
+			else if (auto param = dynamic_pointer_cast<ofParameter<int>>(*it)) {
+				// bingo, we have a float param
+				setParam(e, *param);
+
+			}
 			else if (auto param = dynamic_pointer_cast<ofParameter<bool>>(*it)) {
 				// we have a bool parameter
 				setParam(e, *param);
@@ -694,6 +715,38 @@ void ofxParameterTwisterImpl::setParam(Encoder& encoder_, ofParameter<float>& pa
 		// to midi.
 		encoder_.setRotaryValue(ofMap(v_, pMin, pMax, 0, TW_MAX_ENCODER_VALUE, true));
 	});
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setParam(size_t idx_, ofParameter<int>& param_) {
+	if (idx_ < mEncoders.size()) {
+		setParam(mEncoders[idx_], param_);
+	}
+}
+
+// ------------------------------------------------------
+
+void ofxParameterTwisterImpl::setParam(Encoder& encoder_, ofParameter<int>& param_) {
+	encoder_.setRotaryState(true);
+	encoder_.setRotaryValue(ofMap(param_, param_.getMin(), param_.getMax(), 0, TW_MAX_ENCODER_VALUE, true));
+
+	// now set the Encoder's event listener to track 
+	// this parameter
+	auto pMin = param_.getMin();
+	auto pMax = param_.getMax();
+
+	encoder_.updateRotaryParam = [&param_, pMin, pMax](uint8_t msb, uint8_t lsb) {
+		uint16_t highRezVal = ((msb & 0x7F) << 7) | (lsb & 0x7F);
+		// on midi input
+		param_.set(ofMap(highRezVal, 0, TW_MAX_ENCODER_VALUE, pMin, pMax, true));
+	};
+
+	encoder_.mELRotaryParamChange = param_.newListener([&encoder_, pMin, pMax](int v_) {
+		// on parameter change, write from parameter 
+		// to midi.
+		encoder_.setRotaryValue(ofMap(v_, pMin, pMax, 0, TW_MAX_ENCODER_VALUE, true));
+		});
 }
 
 // ------------------------------------------------------

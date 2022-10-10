@@ -52,6 +52,7 @@ public:
 	void setParams(const ofParameterGroup& group_);
 
 	void setParam(size_t idx_, ofParameter<float>& param_);
+	void setParam(size_t idx_, ofParameter<int>& param_);
 	void setParam(size_t idx_, ofParameter<bool>& param_);
 	void clearParam(size_t idx_, bool force_ = false);
 
